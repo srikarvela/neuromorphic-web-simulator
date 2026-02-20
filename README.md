@@ -1,6 +1,10 @@
+
 <p align="center">
   <img src="docs/README_IMGS/header.png" alt="Neuromorphic Web Simulator Header" width="100%" />
 </p>
+
+[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://neuromorphic-web-simulator-tk3a-1bz84ishj-srikar-velas-projects.vercel.app)
+
 
 # Neuromorphic Web Simulator
 
@@ -81,7 +85,97 @@ This demonstrates classical Hebbian causality in a minimal 2-neuron system.
                                       └────────────────────┘
 ```
 
+
 The simulation runs **off the main UI thread**, ensuring smooth visualization even as complexity increases.
+
+---
+
+## ⚡ Why WebWorkers?
+
+Modern browsers execute JavaScript on a single main thread responsible for rendering, user interaction, and application logic. Running a time-stepped neural simulation on that same thread can introduce UI lag, dropped frames, and poor scalability as computational load increases.
+
+By moving the simulation loop into a **WebWorker**, this project achieves:
+
+- Clear separation between computation and rendering  
+- Stable raster and weight plot updates  
+- Deterministic time stepping independent of UI performance  
+- Architectural scalability for larger neural networks  
+
+This mirrors real-world engineering practices used in high-performance dashboards, physics engines, and scientific visualization systems.
+
+---
+
+## 🚀 Performance Considerations
+
+Although the current implementation runs only 2 neurons and 1 synapse for clarity, the architecture is designed with scaling in mind.
+
+Key performance decisions include:
+
+- **Bounded spike and weight history buffers** to prevent memory growth  
+- Fixed timestep integration for deterministic behavior  
+- Worker-isolated compute loop  
+- Minimal message payloads between Worker and UI  
+- Incremental plotting instead of full component re-renders  
+
+As the simulator evolves toward larger networks, future optimizations may include batched spike compression, adaptive stepping strategies, memory pooling, and WebGL-based rendering.
+
+The goal is to scale complexity without rewriting the core architecture.
+
+---
+
+---
+
+## ⚡ Why WebWorkers?
+
+Modern browsers execute JavaScript on a single main thread responsible for:
+- Rendering the UI
+- Handling user interaction
+- Running application logic
+
+Running a time-stepped neural simulation on that same thread would cause:
+- UI lag
+- Dropped frames
+- Jittery visualization
+- Poor scalability as neuron count increases
+
+By moving the simulation loop into a **WebWorker**, this project achieves:
+
+- True separation between computation and rendering
+- Stable raster and weight plot updates
+- Deterministic time stepping independent of UI performance
+- Architectural scalability for larger networks
+
+This mirrors real-world engineering practices used in:
+- High-performance front-end systems
+- Financial dashboards
+- Physics engines
+- Interactive scientific visualization tools
+
+The result is a clean, production-style separation of concerns between:
+**Simulation Engine → Worker → UI Pipeline**.
+
+---
+
+## 🚀 Performance Considerations
+
+Although this demo currently runs only 2 neurons and 1 synapse, the architecture is designed with future scaling in mind.
+
+Key performance principles implemented:
+
+- **Bounded spike/history buffers** to prevent unbounded memory growth
+- Fixed timestep integration for deterministic behavior
+- Worker-based stepping to isolate compute load
+- Minimal message payloads between worker and UI
+- Incremental plotting instead of full re-renders
+
+As the network grows, future optimizations may include:
+
+- Batched spike event compression
+- Adaptive time stepping
+- Memory pooling for spike buffers
+- WebGL-based rendering for high neuron counts
+
+The goal is to evolve this from a conceptual 2-neuron model into a scalable neuromorphic experimentation platform without rewriting the core architecture.
 
 ---
 
@@ -104,18 +198,15 @@ The simulation runs **off the main UI thread**, ensuring smooth visualization ev
 
 ---
 
-## ▶️ Running the Project
+## 🌐 Live Deployment
 
-```bash
-npm install
-npm run dev
-```
+The Neuromorphic Web Simulator is now deployed and publicly accessible.
 
-Then open:
+You can interact with the production version here:
 
-```
-http://localhost:5173
-```
+**https://neuromorphic-web-simulator.vercel.app/**
+
+No local setup is required to explore the simulator. The application runs entirely in the browser using a WebWorker-based simulation pipeline.
 
 ---
 
