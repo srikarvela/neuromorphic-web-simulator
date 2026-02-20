@@ -1,8 +1,8 @@
 import { Neuron } from "./Neuron.ts";
 
 export class LIFNeuron extends Neuron {
-  tau: number;
-  resistance: number;
+  tau: number; // seconds
+  resistance: number; // gain from current -> voltage
 
   constructor(params: {
     id: number;
@@ -22,8 +22,10 @@ export class LIFNeuron extends Neuron {
   }
 
   step(inputCurrent: number, dt: number): boolean {
-    this.voltage +=
-      (-(this.voltage) + this.resistance * inputCurrent) * (dt / this.tau);
+    // Basic Euler integration of:
+    // dV/dt = ( -V + R*I ) / tau
+    const dv = (-(this.voltage) + this.resistance * inputCurrent) * (dt / this.tau);
+    this.voltage += dv;
 
     if (this.voltage >= this.threshold) {
       this.reset();

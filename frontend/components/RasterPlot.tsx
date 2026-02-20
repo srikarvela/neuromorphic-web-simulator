@@ -15,19 +15,13 @@ export type Spike = {
 
 type RasterPlotProps = {
   spikes: Spike[];
-  neuronCount: number;
+  neuronCount: number | null;
   timeWindow?: number;
   pause: () => void;
   resumeIfPreviouslyRunning: () => void;
 };
 
-const COLORS = [
-  "#00ffcc",
-  "#ff6b6b",
-  "#4dabf7",
-  "#ffd43b",
-  "#b197fc",
-];
+const COLORS = ["#00ffcc", "#ff6b6b", "#4dabf7", "#ffd43b", "#b197fc"];
 
 export function RasterPlot({
   spikes,
@@ -36,16 +30,11 @@ export function RasterPlot({
   pause,
   resumeIfPreviouslyRunning,
 }: RasterPlotProps) {
-  if (neuronCount === null) {
-    return <div style={{ padding: 20, color: "#888" }}>Initializing…</div>;
-  }
-
   const width = 520;
   const height = 260;
   const padding = 32;
 
   const X_TICKS = 5;
-  const Y_LABEL_STEP = Math.max(1, Math.floor(neuronCount / 6));
 
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -57,35 +46,42 @@ export function RasterPlot({
   const [tooltip, setTooltip] = useState<Tooltip>(null);
   const [hovering, setHovering] = useState(false);
 
+  const safeNeuronCount = neuronCount ?? 0;
+  const Y_LABEL_STEP =
+    safeNeuronCount > 0 ? Math.max(1, Math.floor(safeNeuronCount / 6)) : 1;
+
   const latestTime = spikes.length ? spikes[spikes.length - 1].time : 0;
   const windowSize = timeWindow / zoom;
 
   const tMin =
-    follow && !hovering
-      ? Math.max(0, latestTime - windowSize)
-      : viewStart;
+    follow && !hovering ? Math.max(0, latestTime - windowSize) : viewStart;
 
   const tMax = tMin + windowSize;
 
   const timeToX = (t: number) =>
-    padding +
-    ((t - tMin) / windowSize) * (width - 2 * padding);
+    padding + ((t - tMin) / windowSize) * (width - 2 * padding);
 
   const neuronToY = (id: number) =>
     padding +
-    (id / Math.max(1, neuronCount - 1)) *
-      (height - 2 * padding);
+    (id / Math.max(1, safeNeuronCount - 1)) * (height - 2 * padding);
 
-  const visibleSpikes = useMemo(
-    () => spikes.filter((s) => s.time >= tMin && s.time <= tMax),
-    [spikes, tMin, tMax]
-  );
+  const visibleSpikes = useMemo(() => {
+    if (safeNeuronCount === 0) return [] as Spike[];
+    return spikes.filter((s) => s.time >= tMin && s.time <= tMax);
+  }, [spikes, tMin, tMax, safeNeuronCount]);
 
-  const lastSpikeByNeuron = useMemo(() => {
+  // ✅ compute per-neuron previous spike time within the *visible* window
+  // so Δt is meaningful and not always ~0 (your old code made dt ~0 because it used the final spike time)
+  const prevTimeByNeuronInVisible = useMemo(() => {
     const map = new Map<number, number>();
-    for (const s of spikes) map.set(s.neuronId, s.time);
-    return map;
-  }, [spikes]);
+    const out = new Map<number, number | undefined>();
+
+    for (const s of visibleSpikes) {
+      out.set(s.neuronId, map.get(s.neuronId));
+      map.set(s.neuronId, s.time);
+    }
+    return out;
+  }, [visibleSpikes]);
 
   const xGridTimes = Array.from({ length: X_TICKS + 1 }, (_, i) =>
     tMin + (i / X_TICKS) * windowSize
@@ -99,11 +95,7 @@ export function RasterPlot({
     const mouseX = e.clientX - rect.left - padding;
     const ratio = mouseX / (width - 2 * padding);
 
-    const newZoom = Math.min(
-      5,
-      Math.max(0.5, zoom - e.deltaY * 0.001)
-    );
-
+    const newZoom = Math.min(5, Math.max(0.5, zoom - e.deltaY * 0.001));
     const newWindow = timeWindow / newZoom;
     const newViewStart = tMin + ratio * (windowSize - newWindow);
 
@@ -124,8 +116,7 @@ export function RasterPlot({
     setLastMouseX(e.clientX);
 
     const speed = e.shiftKey ? 3 : 1;
-    const dt =
-      (-dx / (width - 2 * padding)) * windowSize * speed;
+    const dt = (-dx / (width - 2 * padding)) * windowSize * speed;
 
     setViewStart((v) => Math.max(0, v + dt));
   };
@@ -138,7 +129,10 @@ export function RasterPlot({
     setFollow(true);
   };
 
-  const pausedByHover = hovering;
+  // ✅ safe early return AFTER hooks
+  if (neuronCount === null) {
+    return <div style={{ padding: 20, color: "#888" }}>Initializing…</div>;
+  }
 
   return (
     <div>
@@ -153,9 +147,14 @@ export function RasterPlot({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onDoubleClick={resetView}
-        onMouseEnter={() => pause()}
+        onMouseEnter={() => {
+          pause();
+          setHovering(true);
+        }}
         onMouseLeave={() => {
           onMouseUp();
+          setTooltip(null);
+          setHovering(false);
           resumeIfPreviouslyRunning();
         }}
         style={{
@@ -163,9 +162,7 @@ export function RasterPlot({
           border: "1px solid #222",
           borderRadius: 6,
           cursor: isPanning ? "grabbing" : "grab",
-          boxShadow: pausedByHover
-            ? "0 0 0 2px #00ffaa66"
-            : "none",
+          boxShadow: hovering ? "0 0 0 2px #00ffaa66" : "none",
           transition: "box-shadow 120ms ease",
         }}
       >
@@ -193,7 +190,7 @@ export function RasterPlot({
         ))}
 
         {/* Neuron grid + labels */}
-        {Array.from({ length: neuronCount }).map((_, id) => (
+        {Array.from({ length: safeNeuronCount }).map((_, id) => (
           <g key={id}>
             <line
               x1={padding}
@@ -204,12 +201,7 @@ export function RasterPlot({
               opacity={0.6}
             />
             {id % Y_LABEL_STEP === 0 && (
-              <text
-                x={8}
-                y={neuronToY(id) + 4}
-                fill="#555"
-                fontSize={10}
-              >
+              <text x={8} y={neuronToY(id) + 4} fill="#555" fontSize={10}>
                 n{id}
               </text>
             )}
@@ -220,21 +212,18 @@ export function RasterPlot({
         {visibleSpikes.map((s, i) => {
           const cx = timeToX(s.time);
           const cy = neuronToY(s.neuronId);
-          const prev = lastSpikeByNeuron.get(s.neuronId);
-          const dt = prev ? s.time - prev : undefined;
+          const prev = prevTimeByNeuronInVisible.get(s.neuronId);
+          const dt = prev !== undefined ? s.time - prev : undefined;
 
           const tooltipWidth = 150;
           const tx =
-            cx + tooltipWidth > width
-              ? cx - tooltipWidth - 8
-              : cx + 8;
+            cx + tooltipWidth > width ? cx - tooltipWidth - 8 : cx + 8;
 
-          const ty =
-            cy - 40 < 0 ? cy + 12 : cy - 28;
+          const ty = cy - 40 < 0 ? cy + 12 : cy - 28;
 
           return (
             <circle
-              key={i}
+              key={`${s.neuronId}-${s.time}-${i}`}
               cx={cx}
               cy={cy}
               r={hovering ? 4 : 3}
@@ -261,13 +250,7 @@ export function RasterPlot({
 
         {/* Tooltip */}
         {tooltip && (
-          <g
-            pointerEvents="none"
-            style={{
-              opacity: 1,
-              transition: "opacity 120ms ease, transform 120ms ease",
-            }}
-          >
+          <g pointerEvents="none">
             <rect
               x={tooltip.x}
               y={tooltip.y}
@@ -277,12 +260,7 @@ export function RasterPlot({
               fill="#111"
               stroke="#333"
             />
-            <text
-              x={tooltip.x + 10}
-              y={tooltip.y + 14}
-              fill="#ccc"
-              fontSize={11}
-            >
+            <text x={tooltip.x + 10} y={tooltip.y + 14} fill="#ccc" fontSize={11}>
               n={tooltip.neuronId} · t={tooltip.time.toFixed(3)}s
             </text>
             {tooltip.dt !== undefined && (

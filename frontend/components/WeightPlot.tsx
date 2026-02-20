@@ -43,27 +43,24 @@ export function WeightPlot({
   const [tooltip, setTooltip] = useState<Tooltip>(null);
   const [hovering, setHovering] = useState(false);
 
-  if (history.length === 0) {
-    return <div style={{ color: "#888" }}>No weight data</div>;
-  }
-
-  const latestTime = history[history.length - 1].time;
+  // ✅ Always compute with safe defaults so hooks run every render
+  const latestTime = history.length > 0 ? history[history.length - 1].time : 0;
   const windowSize = timeWindow / zoom;
 
   const tMin =
-    follow && !hovering
-      ? Math.max(0, latestTime - windowSize)
-      : viewStart;
+    follow && !hovering ? Math.max(0, latestTime - windowSize) : viewStart;
 
   const tMax = tMin + windowSize;
 
-  const visible = useMemo(
-    () => history.filter((p) => p.time >= tMin && p.time <= tMax),
-    [history, tMin, tMax]
-  );
+  const visible = useMemo(() => {
+    if (history.length === 0) return [] as WeightPoint[];
+    return history.filter((p) => p.time >= tMin && p.time <= tMax);
+  }, [history, tMin, tMax]);
 
-  const wMin = Math.min(...visible.map((p) => p.weight));
-  const wMax = Math.max(...visible.map((p) => p.weight));
+  const wMin =
+    visible.length > 0 ? Math.min(...visible.map((p) => p.weight)) : 0;
+  const wMax =
+    visible.length > 0 ? Math.max(...visible.map((p) => p.weight)) : 1;
   const wRange = Math.max(1e-6, wMax - wMin);
 
   const xGridTimes = Array.from({ length: X_TICKS + 1 }, (_, i) =>
@@ -75,17 +72,15 @@ export function WeightPlot({
   );
 
   const timeToX = (t: number) =>
-    padding +
-    ((t - tMin) / windowSize) * (width - 2 * padding);
+    padding + ((t - tMin) / windowSize) * (width - 2 * padding);
 
   const weightToY = (w: number) =>
-    height -
-    padding -
-    ((w - wMin) / wRange) * (height - 2 * padding);
+    height - padding - ((w - wMin) / wRange) * (height - 2 * padding);
 
   const path = visible
-    .map((p, i) =>
-      `${i === 0 ? "M" : "L"} ${timeToX(p.time)} ${weightToY(p.weight)}`
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"} ${timeToX(p.time)} ${weightToY(p.weight)}`
     )
     .join(" ");
 
@@ -97,11 +92,7 @@ export function WeightPlot({
     const mouseX = e.clientX - rect.left - padding;
     const ratio = mouseX / (width - 2 * padding);
 
-    const newZoom = Math.min(
-      5,
-      Math.max(0.5, zoom - e.deltaY * 0.001)
-    );
-
+    const newZoom = Math.min(5, Math.max(0.5, zoom - e.deltaY * 0.001));
     const newWindow = timeWindow / newZoom;
     const newViewStart = tMin + ratio * (windowSize - newWindow);
 
@@ -123,8 +114,7 @@ export function WeightPlot({
     setLastMouseX(e.clientX);
 
     const speed = e.shiftKey ? 3 : 1;
-    const dt =
-      (-dx / (width - 2 * padding)) * windowSize * speed;
+    const dt = (-dx / (width - 2 * padding)) * windowSize * speed;
 
     setViewStart((v) => Math.max(0, v + dt));
   };
@@ -136,6 +126,11 @@ export function WeightPlot({
     setViewStart(0);
     setFollow(true);
   };
+
+  // ✅ Now it's safe to early-return (after all hooks have run)
+  if (history.length === 0) {
+    return <div style={{ color: "#888" }}>No weight data</div>;
+  }
 
   return (
     <div>
@@ -150,9 +145,14 @@ export function WeightPlot({
         onMouseMove={onMouseMove}
         onMouseUp={onMouseUp}
         onDoubleClick={resetView}
-        onMouseEnter={() => pause()}
+        onMouseEnter={() => {
+          pause();
+          setHovering(true);
+        }}
         onMouseLeave={() => {
           onMouseUp();
+          setTooltip(null);
+          setHovering(false);
           resumeIfPreviouslyRunning();
         }}
         style={{
@@ -160,9 +160,7 @@ export function WeightPlot({
           border: "1px solid #222",
           borderRadius: 6,
           cursor: isPanning ? "grabbing" : "grab",
-          boxShadow: hovering
-            ? "0 0 0 2px #00ffaa66"
-            : "none",
+          boxShadow: hovering ? "0 0 0 2px #00ffaa66" : "none",
           transition: "box-shadow 120ms ease",
         }}
       >
@@ -200,12 +198,7 @@ export function WeightPlot({
               stroke="#141414"
               opacity={0.6}
             />
-            <text
-              x={8}
-              y={weightToY(w) + 4}
-              fill="#555"
-              fontSize={10}
-            >
+            <text x={8} y={weightToY(w) + 4} fill="#555" fontSize={10}>
               {w.toFixed(2)}
             </text>
           </g>
@@ -222,16 +215,14 @@ export function WeightPlot({
             const rect = svgRef.current?.getBoundingClientRect();
             if (!rect) return;
 
+            if (visible.length === 0) return;
+
             const x = e.clientX - rect.left;
             const t =
-              tMin +
-              ((x - padding) / (width - 2 * padding)) *
-                windowSize;
+              tMin + ((x - padding) / (width - 2 * padding)) * windowSize;
 
             const nearest = visible.reduce((prev, curr) =>
-              Math.abs(curr.time - t) < Math.abs(prev.time - t)
-                ? curr
-                : prev
+              Math.abs(curr.time - t) < Math.abs(prev.time - t) ? curr : prev
             );
 
             const idx = history.indexOf(nearest);
@@ -243,12 +234,9 @@ export function WeightPlot({
             const cy = weightToY(nearest.weight);
 
             const tx =
-              cx + tooltipWidth > width
-                ? cx - tooltipWidth - 8
-                : cx + 8;
+              cx + tooltipWidth > width ? cx - tooltipWidth - 8 : cx + 8;
 
-            const ty =
-              cy - 40 < 0 ? cy + 12 : cy - 28;
+            const ty = cy - 40 < 0 ? cy + 12 : cy - 28;
 
             setTooltip({
               x: tx,
@@ -268,12 +256,7 @@ export function WeightPlot({
 
         {/* Tooltip */}
         {tooltip && (
-          <g
-            pointerEvents="none"
-            style={{
-              transition: "opacity 120ms ease, transform 120ms ease",
-            }}
-          >
+          <g pointerEvents="none">
             <rect
               x={tooltip.x}
               y={tooltip.y}
@@ -283,12 +266,7 @@ export function WeightPlot({
               fill="#111"
               stroke="#333"
             />
-            <text
-              x={tooltip.x + 10}
-              y={tooltip.y + 14}
-              fill="#ccc"
-              fontSize={11}
-            >
+            <text x={tooltip.x + 10} y={tooltip.y + 14} fill="#ccc" fontSize={11}>
               w={tooltip.weight.toFixed(3)} · t={tooltip.time.toFixed(3)}s
             </text>
             {tooltip.dw !== undefined && (

@@ -2,6 +2,8 @@ export class Synapse {
   pre: number;
   post: number;
   weight: number;
+  delay: number;   // seconds
+  tau: number;     // seconds (decay)
 
   lastPreSpike?: number;
   lastPostSpike?: number;
@@ -10,10 +12,15 @@ export class Synapse {
     pre: number;
     post: number;
     weight: number;
+    delay?: number;
+    tau?: number;
   }) {
     this.pre = params.pre;
     this.post = params.post;
     this.weight = params.weight;
+
+    this.delay = params.delay ?? 0;
+    this.tau = params.tau ?? 0.01;
   }
 
   notifyPreSpike(time: number): void {
@@ -25,24 +32,21 @@ export class Synapse {
   }
 
   computeDeltaT(): number | null {
-    if (
-      this.lastPreSpike === undefined ||
-      this.lastPostSpike === undefined
-    ) {
+    if (this.lastPreSpike === undefined || this.lastPostSpike === undefined) {
       return null;
     }
     return this.lastPostSpike - this.lastPreSpike;
   }
 
   computeCurrent(time: number): number {
-    // Simple current model: instantaneous weight on pre-spike
     if (this.lastPreSpike === undefined) return 0;
 
-    // Only inject current at the moment of spike
-    if (Math.abs(time - this.lastPreSpike) < 1e-9) {
-      return this.weight;
-    }
+    const t0 = this.lastPreSpike + this.delay;
+    const dt = time - t0;
 
-    return 0;
+    if (dt < 0) return 0;
+
+    // decaying PSC: w * exp(-dt/tau)
+    return this.weight * Math.exp(-dt / this.tau);
   }
 }
